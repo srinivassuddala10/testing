@@ -22,26 +22,20 @@ on:
         description: "Agent ID"
         required: true
       branch:
-        description: "github branch"
+        description: "GitHub branch"
         required: true
       github_token:
-        description: "github token"
+        description: "GitHub token"
         required: true
-      # github_config:
-      #   description: "GitHub Repository Details [JSON String]"
-      #   required: true
-      #   type: string
-      #   default: '{}'
       aws_config:
         description: "AWS Credentials & Region [JSON String]"
         required: true
         type: string
         default: '{}'
-      
+
 permissions:
   contents: write
   actions: write
-
 
 env:
   AWS_REGION: us-east-2
@@ -52,10 +46,10 @@ env:
   AWS_SECRET_ACCESS_KEY: ${{ fromJson(github.event.inputs.aws_config).secret_key }}
   AWS_ACCOUNT_ID: ${{ fromJson(github.event.inputs.aws_config).aws_account_id }}
 
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository (infra code)
         uses: actions/checkout@v3
@@ -64,35 +58,24 @@ jobs:
 
       - name: Parse AWS Config
         run: |
-          echo "AWS_ACCESS_KEY_ID=$(echo '${{ fromJson(github.event.inputs.aws_config).access_key }}' | jq -r '.aws_access_key')" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$(echo '${{ fromJson(github.event.inputs.aws_config).secret_key }}' | jq -r '.aws_secret_access_key')" >> $GITHUB_ENV
-          echo "AWS_ACCOUNT_ID=$(echo '${{ fromJson(github.event.inputs.aws_config).aws_account_id }}' | jq -r '.aws_account_id')" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ fromJson(github.event.inputs.aws_config).access_key }}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${{ fromJson(github.event.inputs.aws_config).secret_key }}" >> $GITHUB_ENV
+          echo "AWS_ACCOUNT_ID=${{ fromJson(github.event.inputs.aws_config).aws_account_id }}" >> $GITHUB_ENV
 
-      # Configure AWS credentials
-      - name: Store AWS Credentials Securely
-        run: |
-          echo "AWS_ACCOUNT_ID=973508469163" >> $GITHUB_ENV
-          echo "AWS_REGION=us-east-2" >> $GITHUB_ENV
-          echo "AWS_ACCESS_KEY_ID=AKIA6FKNAMGVS33ABGPN" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=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" >> $GITHUB_ENV
-          echo "$GITHUB_ENV"
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.13.2
-        - name: Authenticate with Terraform Cloud
-        
-        env:
-          TF_CLI_CONFIG_FILE: $HOME/.terraformrc
+
+      - name: Authenticate with Terraform Cloud
         run: |
-          echo "credentials \"app.terraform.io\" {
-            token = \"${{ secrets.TF_API_TOKEN }}\"
-          }" > $HOME/.terraformrc
+          echo 'credentials "app.terraform.io" {
+            token = "${{ secrets.TF_API_TOKEN }}"
+          }' > $HOME/.terraformrc
