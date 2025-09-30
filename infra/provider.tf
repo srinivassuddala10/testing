@@ -8,6 +8,5 @@ terraform {
 }
 
 provider "aws" {
-  region  = "us-west-2"
-  profile = "child-account"
+  region = var.region
 }
