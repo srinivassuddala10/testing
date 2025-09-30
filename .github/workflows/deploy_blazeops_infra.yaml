@@ -1,79 +1,98 @@
-name: Version 1 Deploy main application infrastructure and application itself.
+name: Deploy Python App on EC2
 
 on:
-  # push:
-  #   branches:
-  #     - master
   workflow_dispatch:
     inputs:
+      PROJECT_ID:
+        description: "Project ID"
+        required: true
+      ORGANIZATION_ID:
+        description: "Organization ID"
+        required: true
+      CLOUD_TYPE:
+        description: "Cloud Type"
+        required: true
+      API_KEY:
+        description: "API Key"
+        required: true
+      BLAZEOPS_BASE_URL:
+        description: "Base URL for BlazeOps"
+        required: true
+      AGENT_ID:
+        description: "Agent ID"
+        required: true
       branch:
-        description: "Branch to deploy"
+        description: "github branch"
         required: true
-        default: "master"
-      trigger_workflow:
-        description: "Trigger workflow ?"
+      github_token:
+        description: "github token"
         required: true
-        type: choice
-        options:
-          - "yes"
-          - "no"
+      # github_config:
+      #   description: "GitHub Repository Details [JSON String]"
+      #   required: true
+      #   type: string
+      #   default: '{}'
+      aws_config:
+        description: "AWS Credentials & Region [JSON String]"
+        required: true
+        type: string
+        default: '{}'
+      
+permissions:
+  contents: write
+  actions: write
+
+
+env:
+  AWS_REGION: us-east-2
+  IMAGE_NAME: blazeops-agent-backend-api
+  ENV: staging
+  IMAGE_TAG: latest
+  AWS_ACCESS_KEY_ID: ${{ fromJson(github.event.inputs.aws_config).access_key }}
+  AWS_SECRET_ACCESS_KEY: ${{ fromJson(github.event.inputs.aws_config).secret_key }}
+  AWS_ACCOUNT_ID: ${{ fromJson(github.event.inputs.aws_config).aws_account_id }}
+
 
 jobs:
-  deploy_main_application_backend_v1:
-    runs-on: [self-hosted, ec2]
-
-    env:
-      TERRAFORM_VERSION: 1.5.7
-
+  deploy:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository (infra code)
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch }}
 
-      - name: Get latest commit SHA
+      - name: Parse AWS Config
         run: |
-          COMMIT_SHA=$(git rev-parse HEAD)
-          echo "COMMIT_SHA=$COMMIT_SHA" >> $GITHUB_ENV
-        shell: bash
+          echo "AWS_ACCESS_KEY_ID=$(echo '${{ fromJson(github.event.inputs.aws_config).access_key }}' | jq -r '.aws_access_key')" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$(echo '${{ fromJson(github.event.inputs.aws_config).secret_key }}' | jq -r '.aws_secret_access_key')" >> $GITHUB_ENV
+          echo "AWS_ACCOUNT_ID=$(echo '${{ fromJson(github.event.inputs.aws_config).aws_account_id }}' | jq -r '.aws_account_id')" >> $GITHUB_ENV
 
+      # Configure AWS credentials
       - name: Store AWS Credentials Securely
         run: |
           echo "AWS_ACCOUNT_ID=973508469163" >> $GITHUB_ENV
-          echo "AWS_REGION=us-east-1" >> $GITHUB_ENV
+          echo "AWS_REGION=us-east-2" >> $GITHUB_ENV
           echo "AWS_ACCESS_KEY_ID=AKIA6FKNAMGVS33ABGPN" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=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" >> $GITHUB_ENV
           echo "$GITHUB_ENV"
-
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Setup Terraform
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-
-      - name: Authenticate with Terraform Cloud
+          terraform_version: 1.13.2
+        - name: Authenticate with Terraform Cloud
+        
         env:
           TF_CLI_CONFIG_FILE: $HOME/.terraformrc
         run: |
           echo "credentials \"app.terraform.io\" {
             token = \"${{ secrets.TF_API_TOKEN }}\"
           }" > $HOME/.terraformrc
-          - name: Create ECR Repository
-        id: create-ecr
-        run: |
-          REPO_NAME="dia_main_app_v1"
-          if aws ecr describe-repositories --repository-names $REPO_NAME > /dev/null 2>&1; then
-            echo "Repository $REPO_NAME already exists. Skipping creation."
-          else
-            echo "Creating ECR repository for $REPO_NAME..."
-            aws ecr create-repository --repository-name $REPO_NAME
-            echo "Repository $REPO_NAME created successfully."
-          fi
-        env:
-          REPO_NAME: "dia_main_app_v1"
