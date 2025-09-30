@@ -5,12 +5,12 @@ variable "region" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type"
+  description = "my_ec2"
   type        = string
   default     = "t2.micro"
 }
 
 variable "bucket_name" {
-  description = "Name of the S3 bucket"
+  description = "my_bucket"
   type        = string
 }
