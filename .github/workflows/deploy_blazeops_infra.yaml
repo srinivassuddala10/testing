@@ -64,3 +64,16 @@ jobs:
           echo "credentials \"app.terraform.io\" {
             token = \"${{ secrets.TF_API_TOKEN }}\"
           }" > $HOME/.terraformrc
+          - name: Create ECR Repository
+        id: create-ecr
+        run: |
+          REPO_NAME="dia_main_app_v1"
+          if aws ecr describe-repositories --repository-names $REPO_NAME > /dev/null 2>&1; then
+            echo "Repository $REPO_NAME already exists. Skipping creation."
+          else
+            echo "Creating ECR repository for $REPO_NAME..."
+            aws ecr create-repository --repository-name $REPO_NAME
+            echo "Repository $REPO_NAME created successfully."
+          fi
+        env:
+          REPO_NAME: "dia_main_app_v1"
