@@ -1,0 +1,189 @@
+name: Deploy Python App on EC2
+
+on:
+  workflow_dispatch:
+    inputs:
+      PROJECT_ID:
+        description: "Project ID"
+        required: true
+      ORGANIZATION_ID:
+        description: "Organization ID"
+        required: true
+      CLOUD_TYPE:
+        description: "Cloud Type"
+        required: true
+      API_KEY:
+        description: "API Key"
+        required: true
+      BLAZEOPS_BASE_URL:
+        description: "Base URL for BlazeOps"
+        required: true
+      AGENT_ID:
+        description: "Agent ID"
+        required: true
+      branch:
+        description: "github branch"
+        required: true
+      github_token:
+        description: "github token"
+        required: true
+      # github_config:
+      #   description: "GitHub Repository Details [JSON String]"
+      #   required: true
+      #   type: string
+      #   default: '{}'
+      aws_config:
+        description: "AWS Credentials & Region [JSON String]"
+        required: true
+        type: string
+        default: '{}'
+      
+permissions:
+  contents: write
+  actions: write
+
+
+env:
+  AWS_REGION: ap-south-1
+  IMAGE_NAME: blazeops-agent-backend-api
+  ENV: staging
+  IMAGE_TAG: latest
+  AWS_ACCESS_KEY_ID: ${{ fromJson(github.event.inputs.aws_config).access_key }}
+  AWS_SECRET_ACCESS_KEY: ${{ fromJson(github.event.inputs.aws_config).secret_key }}
+  AWS_ACCOUNT_ID: ${{ fromJson(github.event.inputs.aws_config).aws_account_id }}
+
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (infra code)
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Parse AWS Config
+        run: |
+          echo "AWS_ACCESS_KEY_ID=$(echo '${{ fromJson(github.event.inputs.aws_config).access_key }}' | jq -r '.aws_access_key')" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$(echo '${{ fromJson(github.event.inputs.aws_config).secret_key }}' | jq -r '.aws_secret_access_key')" >> $GITHUB_ENV
+          echo "AWS_ACCOUNT_ID=$(echo '${{ fromJson(github.event.inputs.aws_config).aws_account_id }}' | jq -r '.aws_account_id')" >> $GITHUB_ENV
+
+      # Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.2
+
+      # Terraform init & apply
+      - name: Provision Infrastructure
+        run: |
+          echo "Provisioning backend infrastructure..."
+          pushd "infra/blazeops/agent-code" 
+          echo "aws_account_id = \"${{ env.AWS_ACCOUNT_ID }}\"" >> terraform.tfvars
+          echo "aws_region = \"${{ env.AWS_REGION }}\"" >> terraform.tfvars
+          echo "aws_access_key = \"${{ env.AWS_ACCESS_KEY_ID }}\"" >> terraform.tfvars
+          echo "aws_secret_access_key = \"${{ env.AWS_SECRET_ACCESS_KEY }}\"" >> terraform.tfvars
+          cat terraform.tfvars
+          ls -ltrha 
+          terraform init
+          terraform apply -auto-approve
+          terraform output
+
+      - name: Get Terraform Outputs
+        id: tf_outputs
+        working-directory: infra/blazeops/agent-code
+        run: |
+          # Save EC2 private key as GitHub Actions secret
+          gh secret set EC2_PRIVATE_KEY --body "$(terraform output -raw ec2_private_key)"
+
+          # Export values for later steps
+          echo "EC2_PUBLIC_IP=$(terraform output -raw ec2_public_ip)" >> $GITHUB_ENV
+          echo "ECR_REPO_URL=$(terraform output -raw ecr_repo_url)" >> $GITHUB_ENV
+          echo "AWS_REGION=${{ env.AWS_REGION }}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ env.IMAGE_TAG }}" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ github.event.inputs.github_token }}
+      - name: Debug env vars
+        run: |
+          echo "EC2_PUBLIC_IP=$EC2_PUBLIC_IP"
+          echo "ECR_REPO_URL=$ECR_REPO_URL"
+          echo "AWS_REGION=$AWS_REGION"
+          echo "IMAGE_TAG=$IMAGE_TAG"
+    
+
+      # Login to Amazon ECR
+      - name: Login to Amazon ECR
+        run: |
+          echo "Logging into: $ECR_REPO_URL"
+          aws ecr get-login-password --region $AWS_REGION \
+            | docker login --username AWS --password-stdin $ECR_REPO_URL
+
+      # Build & Push Docker Image
+      - name: Build and Push Docker Image
+        working-directory: ./blazeops-agent
+        run: |
+          docker build -t $ECR_REPO_URL:$IMAGE_TAG .
+          docker push $ECR_REPO_URL:$IMAGE_TAG
+
+      # Save PEM key to a file for SSH
+      - name: Save PEM key to file
+        run: |
+          echo "${{ secrets.EC2_PRIVATE_KEY }}" > ec2_key.pem
+          chmod 600 ec2_key.pem
+
+      - name: Deploy Docker Container on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ec2_key.pem ubuntu@${{ env.EC2_PUBLIC_IP }} << EOF
+            printf "PROJECT_ID=%s\n" "${{ github.event.inputs.PROJECT_ID }}" > /home/ubuntu/.env
+            printf "ORGANIZATION_ID=%s\n" "${{ github.event.inputs.ORGANIZATION_ID }}" >> /home/ubuntu/.env
+            printf "CLOUD_TYPE=%s\n" "${{ github.event.inputs.CLOUD_TYPE }}" >> /home/ubuntu/.env
+            printf "API_KEY=%s\n" "${{ github.event.inputs.API_KEY }}" >> /home/ubuntu/.env
+            printf "BLAZEOPS_BASE_URL=%s\n" "${{ github.event.inputs.BLAZEOPS_BASE_URL }}" >> /home/ubuntu/.env
+            printf "AGENT_ID=%s\n" "${{ github.event.inputs.AGENT_ID }}" >> /home/ubuntu/.env
+            chmod 600 /home/ubuntu/.env
+
+            # Authenticate Docker to ECR inside EC2
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REPO_URL }}
+            
+            echo "🔍 Checking for existing blazeops-agent container..."
+            # Stop and remove any existing container with the same name
+            if docker ps -a --format "table {{.Names}}" | grep -q "^blazeops-agent$"; then
+              echo "🛑 Found existing container blazeops-agent, stopping and removing..."
+              docker stop blazeops-agent 2>/dev/null || echo "Container was not running"
+              docker rm blazeops-agent 2>/dev/null || echo "Container removal failed, continuing..."
+              sleep 2  # Give Docker time to clean up
+            else
+              echo "✅ No existing container blazeops-agent found."
+            fi
+            
+            # Double check - force remove if still exists
+            if docker ps -a --format "table {{.Names}}" | grep -q "^blazeops-agent$"; then
+              echo "🔧 Force removing stubborn container..."
+              docker rm -f blazeops-agent 2>/dev/null || true
+              sleep 2
+            fi
+
+            echo "⬇️ Pulling latest image..."
+            docker pull ${{ env.ECR_REPO_URL }}:${{ env.IMAGE_TAG }}
+
+            echo "🚀 Running new container..."
+            docker run -d --name blazeops-agent --env-file /home/ubuntu/.env -p 8000:8000 ${{ env.ECR_REPO_URL }}:${{ env.IMAGE_TAG }}
+            
+            echo "✅ Verifying container status..."
+            sleep 5
+            if docker ps --format "table {{.Names}}\t{{.Status}}" | grep blazeops-agent; then
+              echo "🎉 Container blazeops-agent is running successfully!"
+            else
+              echo "❌ Container failed to start, checking logs..."
+              docker logs blazeops-agent || echo "No logs available"
+              exit 1
+            fi
+          EOF
