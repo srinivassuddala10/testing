@@ -1,4 +1,4 @@
-name: Deploy  Terraform
+name: Deploy AWS Resources with Terraform
 
 on:
   workflow_dispatch:
@@ -12,8 +12,8 @@ permissions:
   actions: write
 
 env:
-  IMAGE_NAME: backend-api
-  IMAGE_TAG: latest
+  # Terraform environment variables
+  TF_WORKING_DIR: infra  # path to your Terraform files
 
 jobs:
   deploy:
@@ -34,38 +34,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 3️⃣ Login to Amazon ECR
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      # 4️⃣ Build and push backend Docker image to ECR
-      - name: Build, tag, and push backend Docker image
-        run: |
-          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/$IMAGE_NAME:$IMAGE_TAG
-          docker build -t $IMAGE_URI ./backend
-          docker push $IMAGE_URI
-
-      # 5️⃣ Setup Terraform
+      # 3️⃣ Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.13.2
 
-      # 6️⃣ Terraform Init
+      # 4️⃣ Terraform Init
       - name: Terraform Init
-        run: terraform -chdir=infra init
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} init
 
-      # 7️⃣ Terraform Plan
+      # 5️⃣ Terraform Plan
       - name: Terraform Plan
-        run: terraform -chdir=infra plan -out=tfplan
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} plan -out=tfplan
 
-      # 8️⃣ Terraform Apply
+      # 6️⃣ Terraform Apply
       - name: Terraform Apply
-        run: terraform -chdir=infra apply -auto-approve tfplan
-
-      # 9️⃣ Deploy frontend to S3
-      - name: Deploy frontend to S3
-        run: |
-          aws s3 sync ./frontend s3://my-frontend-bucket --delete
-          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_ID }} --paths "/*"
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -auto-approve tfplan
