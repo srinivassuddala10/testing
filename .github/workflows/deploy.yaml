@@ -3,8 +3,8 @@ name: Deploy AWS Infra with Terraform
 on:
   push:
     branches:
-      - main   # runs on pushes to main branch
-  workflow_dispatch:   # allow manual trigger
+      - main
+  workflow_dispatch:
 
 jobs:
   terraform:
@@ -14,11 +14,11 @@ jobs:
       AWS_REGION: us-east-1
 
     steps:
-      # 1. Checkout code
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2. Configure AWS credentials
+      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -26,18 +26,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3. Setup Terraform
+      # 3️⃣ Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.6
 
+      # 4️⃣ Terraform Init
       - name: Terraform Init
-        run: terraform -chdir=<path-to-tf-files> init
+        run: terraform -chdir=infra init
 
+      # 5️⃣ Terraform Plan
       - name: Terraform Plan
-       run: terraform -chdir=<path-to-tf-files> plan -out=tfplan
+        run: terraform -chdir=infra plan -out=tfplan
 
+      # 6️⃣ Terraform Apply
       - name: Terraform Apply
-      run: terraform -chdir=<path-to-tf-files> apply -auto-approve tfplan
-
+        run: terraform -chdir=infra apply -auto-approve tfplan
