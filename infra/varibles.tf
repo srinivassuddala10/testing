@@ -1,8 +1,4 @@
-variable "aws_region" {}
-variable "aws_access_key" {}
-variable "aws_secret_key" {}
-variable "project_name" {
-  default = "myapp"
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
 }
-variable "db_username" { default = "postgres" }
-variable "db_password" { default = "Password123!" }
