@@ -11,7 +11,7 @@ resource "aws_instance" "backend_ec2" {
 
 # --------------------------
 # RDS Instance
-  ---------------------------
+# ---------------------------
 resource "aws_db_instance" "postgres" {
   engine         = "postgres"
   engine_version = "15.3"
