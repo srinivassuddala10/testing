@@ -23,16 +23,19 @@ resource "aws_instance" "web" {
 }
 
 # --------------------------
-# RDS PostgreSQL
-# --------------------------
+# RDS Instance
+  ---------------------------
 resource "aws_db_instance" "postgres" {
-  allocated_storage    = 20
-  engine               = "postgres"
-  engine_version       = "15.2"
-  instance_class       = "db.t3.micro"
-  name                 = "mydb"
-  username             = "admin"
-  password             = "Password123!"   # Use secrets in prod
-  skip_final_snapshot  = true
-  publicly_accessible  = false
+  engine         = "postgres"
+  engine_version = "15.3"
+  instance_class = "db.t3.micro"
+  allocated_storage = 20
+  db_name        = "mydb"          # ✅ use db_name
+  username       = "admin"
+  password       = "Admin12345"
+  publicly_accessible = false
+  skip_final_snapshot = true
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  subnet_group_name      = aws_db_subnet_group.default.name
 }
+
