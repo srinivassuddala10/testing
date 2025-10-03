@@ -1,16 +1,8 @@
-variable "region" {
-  description = "AWS region to deploy into"
-  type        = string
-  default     = "us-east-1"
+variable "aws_region" {}
+variable "aws_access_key" {}
+variable "aws_secret_key" {}
+variable "project_name" {
+  default = "myapp"
 }
-
-variable "instance_type" {
-  description = "my_ec2"
-  type        = string
-  default     = "t2.micro"
-}
-
-variable "bucket_name" {
-  description = "my_bucket"
-  type        = string
-}
+variable "db_username" { default = "postgres" }
+variable "db_password" { default = "Password123!" }
