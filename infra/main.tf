@@ -2,15 +2,19 @@ provider "aws" {
   region = var.aws_region
 }
 
+# --------------------------
 # S3 Bucket
+# --------------------------
 resource "aws_s3_bucket" "frontend_bucket" {
   bucket = "my-unique-frontend-bucket-12345"
   acl    = "private"
 }
 
-# EC2 instance
+# --------------------------
+# EC2 Instance
+# --------------------------
 resource "aws_instance" "web" {
-  ami           = "ami-0c02fb55956c7d316" # update with valid AMI
+  ami           = "ami-0c02fb55956c7d316" # Replace with a valid AMI in your region
   instance_type = "t2.micro"
 
   tags = {
@@ -18,7 +22,9 @@ resource "aws_instance" "web" {
   }
 }
 
-# RDS Postgres
+# --------------------------
+# RDS PostgreSQL
+# --------------------------
 resource "aws_db_instance" "postgres" {
   allocated_storage    = 20
   engine               = "postgres"
@@ -26,7 +32,7 @@ resource "aws_db_instance" "postgres" {
   instance_class       = "db.t3.micro"
   name                 = "mydb"
   username             = "admin"
-  password             = "Password123!"
+  password             = "Password123!"   # Use secrets in prod
   skip_final_snapshot  = true
   publicly_accessible  = false
 }
