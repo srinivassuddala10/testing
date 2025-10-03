@@ -2,7 +2,11 @@
 # S3 Bucket
 # --------------------------
 resource "aws_s3_bucket" "frontend_bucket" {
-  bucket = "my-unique-frontend-bucket-12345"
+  bucket = "my-frontend-bucket"
+}
+
+resource "aws_s3_bucket_acl" "frontend_bucket_acl" {
+  bucket = aws_s3_bucket.frontend_bucket.id
   acl    = "private"
 }
 
