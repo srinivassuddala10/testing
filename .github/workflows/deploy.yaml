@@ -32,14 +32,12 @@ jobs:
         with:
           terraform_version: 1.6.6
 
-      # 4. Terraform Init
       - name: Terraform Init
-        run: terraform init
+        run: terraform -chdir=<path-to-tf-files> init
 
-      # 5. Terraform Plan
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
+       run: terraform -chdir=<path-to-tf-files> plan -out=tfplan
 
-      # 6. Terraform Apply (auto-approve)
       - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
+      run: terraform -chdir=<path-to-tf-files> apply -auto-approve tfplan
+
