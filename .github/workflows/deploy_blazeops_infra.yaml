@@ -1,52 +1,45 @@
-name: Deploy AWS Infrastructure
+name: Deploy AWS Infra with Terraform
 
 on:
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to deploy"
-        required: true
-
-permissions:
-  contents: write
-  actions: write
-
-env:
-  TF_WORKING_DIR: infra  # Folder containing Terraform files
+  push:
+    branches:
+      - main   # runs on pushes to main branch
+  workflow_dispatch:   # allow manual trigger
 
 jobs:
-  deploy-infra:
+  terraform:
     runs-on: ubuntu-latest
-    steps:
 
-      # 1️⃣ Checkout code
+    env:
+      AWS_REGION: us-east-1
+
+    steps:
+      # 1. Checkout code
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch }}
 
-      # 2️⃣ Configure AWS credentials
+      # 2. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # 3️⃣ Setup Terraform
+      # 3. Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.13.2
+          terraform_version: 1.6.6
 
-      # 4️⃣ Terraform Init
+      # 4. Terraform Init
       - name: Terraform Init
-        run: terraform -chdir=${{ env.TF_WORKING_DIR }} init
+        run: terraform init
 
-      # 5️⃣ Terraform Plan
+      # 5. Terraform Plan
       - name: Terraform Plan
-        run: terraform -chdir=${{ env.TF_WORKING_DIR }} plan -out=tfplan
+        run: terraform plan -out=tfplan
 
-      # 6️⃣ Terraform Apply
+      # 6. Terraform Apply (auto-approve)
       - name: Terraform Apply
-        run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -auto-approve tfplan
+        run: terraform apply -auto-approve tfplan
