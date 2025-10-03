@@ -1,81 +1,65 @@
-name: Deploy Python App on EC2
+name: Deploy Terraform
 
 on:
   workflow_dispatch:
     inputs:
-      PROJECT_ID:
-        description: "Project ID"
-        required: true
-      ORGANIZATION_ID:
-        description: "Organization ID"
-        required: true
-      CLOUD_TYPE:
-        description: "Cloud Type"
-        required: true
-      API_KEY:
-        description: "API Key"
-        required: true
-      BLAZEOPS_BASE_URL:
-        description: "Base URL for BlazeOps"
-        required: true
-      AGENT_ID:
-        description: "Agent ID"
-        required: true
       branch:
-        description: "GitHub branch"
-        required: true
-      github_token:
-        description: "GitHub token"
+        description: Branch to deploy
         required: true
       aws_config:
-        description: "AWS Credentials & Region [JSON String]"
+        description: AWS credentials & region in JSON
         required: true
         type: string
-        default: '{}'
 
 permissions:
   contents: write
   actions: write
 
 env:
-  AWS_REGION: us-east-2
-  IMAGE_NAME: blazeops-agent-backend-api
-  ENV: staging
-  IMAGE_TAG: latest
-  AWS_ACCESS_KEY_ID: ${{ fromJson(github.event.inputs.aws_config).access_key }}
-  AWS_SECRET_ACCESS_KEY: ${{ fromJson(github.event.inputs.aws_config).secret_key }}
-  AWS_ACCOUNT_ID: ${{ fromJson(github.event.inputs.aws_config).aws_account_id }}
+  AWS_ACCESS_KEY_ID: ${{ fromJson(github.event.inputs.aws_config).aws_access_key_id }}
+  AWS_SECRET_ACCESS_KEY: ${{ fromJson(github.event.inputs.aws_config).aws_secret_access_key }}
+  AWS_REGION: ${{ fromJson(github.event.inputs.aws_config).region }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository (infra code)
+      - name: Checkout repo
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch }}
 
-      - name: Parse AWS Config
-        run: |
-          echo "AWS_ACCESS_KEY_ID=${{ fromJson(github.event.inputs.aws_config).access_key }}" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=${{ fromJson(github.event.inputs.aws_config).secret_key }}" >> $GITHUB_ENV
-          echo "AWS_ACCOUNT_ID=${{ fromJson(github.event.inputs.aws_config).aws_account_id }}" >> $GITHUB_ENV
-
-      - name: Configure AWS credentials
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push Backend Docker Image
+        run: |
+          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/backend-api:latest
+          docker build -t $IMAGE_URI ./backend
+          docker push $IMAGE_URI
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.13.2
 
-      - name: Authenticate with Terraform Cloud
+      - name: Terraform Init
+        run: terraform -chdir=infra init
+
+      - name: Terraform Plan
+        run: terraform -chdir=infra plan -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform -chdir=infra apply -auto-approve tfplan
+
+      - name: Deploy Frontend to S3
         run: |
-          echo 'credentials "app.terraform.io" {
-            token = "${{ secrets.TF_API_TOKEN }}"
-          }' > $HOME/.terraformrc
+          aws s3 sync ./frontend s3://my-frontend-bucket --delete
+          aws cloudfront create-invalidation --distribution-id MY_CLOUDFRONT_ID --paths "/*"
