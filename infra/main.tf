@@ -58,23 +58,32 @@ resource "aws_subnet" "main" {
   }
 }
 
+# Create DB Subnet Group
+resource "aws_db_subnet_group" "default" {
+  name       = "my-db-subnet-group"
+  subnet_ids = [aws_subnet.main.id]
 
-# --------------------------
-# RDS Instance
-# ---------------------------
-resource "aws_db_instance" "postgres" {
-  engine         = "postgres"
-  engine_version = "15.3"
-  instance_class = "db.t3.micro"
-  allocated_storage = 20
-  db_name        = "mydb"          # ✅ use db_name
-  username       = "admin"
-  password       = "Admin12345"
-  publicly_accessible = false
-  skip_final_snapshot = true
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  subnet_group_name      = aws_db_subnet_group.default.name
+  tags = {
+    Name = "my-db-subnet-group"
+  }
 }
+
+# Create RDS instance
+resource "aws_db_instance" "postgres" {
+  identifier              = "my-postgres-db"
+  engine                  = "postgres"
+  engine_version          = "15.3"
+  instance_class          = "db.t3.micro"
+  allocated_storage       = 20
+  name                    = "mydb"
+  username                = "admin"
+  password                = "YourStrongPassword123"
+  publicly_accessible     = false
+  db_subnet_group_name    = aws_db_subnet_group.default.name
+  vpc_security_group_ids  = [aws_security_group.rds_sg.id]
+  skip_final_snapshot     = true
+}
+
 
 resource "aws_security_group" "rds_sg" {
   name        = "rds-sg"
