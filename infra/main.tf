@@ -1,25 +1,12 @@
-# --------------------------
-# S3 Bucket
-# --------------------------
 resource "aws_s3_bucket" "frontend_bucket" {
   bucket = "my-frontend-bucket"
 }
 
-resource "aws_s3_bucket_acl" "frontend_bucket_acl" {
-  bucket = aws_s3_bucket.frontend_bucket.id
-  acl    = "private"
-}
-
-# --------------------------
-# EC2 Instance
-# --------------------------
-resource "aws_instance" "web" {
-  ami           = "ami-0c02fb55956c7d316" # Replace with a valid AMI in your region
-  instance_type = "t2.micro"
-
-  tags = {
-    Name = "terraform-ec2"
-  }
+# ---------------------------
+# Backend API EC2 instance
+resource "aws_instance" "backend_ec2" {
+  ami           = "ami-0abcdef1234567890"
+  instance_type = "t3.micro"
 }
 
 # --------------------------
