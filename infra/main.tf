@@ -1,3 +1,18 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  required_version = ">= 1.4.0"
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
 # ---------------------------
 # VPC
 # ---------------------------
@@ -13,13 +28,49 @@ resource "aws_vpc" "main" {
 # Subnet
 # ---------------------------
 resource "aws_subnet" "main" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-1a"
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
 
   tags = {
     Name = "main-subnet"
   }
+}
+
+# ---------------------------
+# Internet Gateway
+# ---------------------------
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "main-igw"
+  }
+}
+
+# ---------------------------
+# Route Table
+# ---------------------------
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+
+  tags = {
+    Name = "main-public-rt"
+  }
+}
+
+# ---------------------------
+# Route Table Association
+# ---------------------------
+resource "aws_route_table_association" "a" {
+  subnet_id      = aws_subnet.main.id
+  route_table_id = aws_route_table.public.id
 }
 
 # ---------------------------
@@ -31,6 +82,7 @@ resource "aws_security_group" "ec2_sg" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
+    description = "SSH access"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -38,6 +90,7 @@ resource "aws_security_group" "ec2_sg" {
   }
 
   ingress {
+    description = "HTTP access"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -50,6 +103,10 @@ resource "aws_security_group" "ec2_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "ec2-sg"
+  }
 }
 
 # ---------------------------
@@ -57,14 +114,14 @@ resource "aws_security_group" "ec2_sg" {
 # ---------------------------
 resource "aws_security_group" "rds_sg" {
   name        = "rds-sg"
-  description = "Allow Postgres access"
+  description = "Allow PostgreSQL access from EC2"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # restrict as needed
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2_sg.id]
   }
 
   egress {
@@ -73,16 +130,22 @@ resource "aws_security_group" "rds_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "rds-sg"
+  }
 }
 
 # ---------------------------
 # EC2 Instance
 # ---------------------------
 resource "aws_instance" "web" {
-  ami           = "ami-0abcdef1234567890"  # replace with your region AMI
-  instance_type = "t3.micro"
-  subnet_id     = aws_subnet.main.id
-  security_groups = [aws_security_group.ec2_sg.name]
+  ami                         = "ami-0c02fb55956c7d316" # Amazon Linux 2 (us-east-1)
+  instance_type               = "t3.micro"
+  subnet_id                   = aws_subnet.main.id
+  vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
+  associate_public_ip_address = true
+  key_name                    = "my-keypair" # <-- replace with your EC2 key pair name
 
   tags = {
     Name = "WebServer"
@@ -93,7 +156,11 @@ resource "aws_instance" "web" {
 # S3 Bucket for Frontend
 # ---------------------------
 resource "aws_s3_bucket" "frontend_bucket" {
-  bucket = "my-frontend-bucket-unique-name-123" # must be globally unique
+  bucket = "my-frontend-bucket-unique-name-123456" # must be globally unique
+
+  tags = {
+    Name = "frontend-bucket"
+  }
 }
 
 # ---------------------------
@@ -123,4 +190,8 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.default.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   skip_final_snapshot    = true
+
+  tags = {
+    Name = "PostgresDB"
+  }
 }
