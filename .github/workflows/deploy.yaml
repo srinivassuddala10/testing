@@ -13,17 +13,20 @@ jobs:
 
     defaults:
       run:
-        working-directory: infra  # Terraform folder path
+        working-directory: infra  # path to your Terraform files
 
     steps:
+      # 1️⃣ Checkout code
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup Terraform
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.5
 
+      # 3️⃣ Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -31,21 +34,30 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      # 4️⃣ Initialize Terraform
       - name: Initialize Terraform
         run: terraform init
 
+      # 5️⃣ Validate Terraform configuration
       - name: Validate Terraform
         run: terraform validate
 
+      # 6️⃣ Terraform Plan
       - name: Terraform Plan
         run: terraform plan -out=tfplan
 
+      # 7️⃣ Terraform Apply
       - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
-
-      # Optional — handle VPC limit or duplicate bucket gracefully
-      - name: Check for Common AWS Errors
-        if: failure()
+        id: apply
         run: |
-          echo "Terraform apply failed — checking possible causes..."
-          grep -E "VpcLimitExceeded|BucketAlreadyExists" terraform.log || true
+          set -o pipefail
+          terraform apply -auto-approve tfplan 2>&1 | tee terraform.log
+          # Check for common AWS errors
+          if grep -q "VpcLimitExceeded" terraform.log; then
+            echo "❌ VPC limit exceeded. Please delete unused VPCs or increase limit."
+            exit 1
+          fi
+          if grep -q "BucketAlreadyExists" terraform.log; then
+            echo "❌ S3 bucket already exists. Choose a unique bucket name."
+            exit 1
+          fi
