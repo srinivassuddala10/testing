@@ -9,35 +9,22 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-
 jobs:
   terraform:
-    name: Deploy AWS Infrastructure
     runs-on: ubuntu-latest
-
     env:
       AWS_REGION: us-east-1
+      TF_DIR: terraform   # 👈 folder where your .tf files live (change if needed)
 
     steps:
-      # -----------------------------
-      # Checkout Repository
-      # -----------------------------
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -----------------------------
-      # Setup Terraform
-      # -----------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
 
-      # -----------------------------
-      # Configure AWS Credentials
-      # -----------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -45,37 +32,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # -----------------------------
-      # Initialize Terraform
-      # -----------------------------
       - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
         run: terraform init
 
-      # -----------------------------
-      # Validate Terraform Configuration
-      # -----------------------------
       - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
         run: terraform validate
 
-      # -----------------------------
-      # Terraform Plan
-      # -----------------------------
       - name: Terraform Plan
-        id: plan
+        working-directory: ${{ env.TF_DIR }}
         run: terraform plan -out=tfplan
 
-      # -----------------------------
-      # Upload Plan as Artifact (optional)
-      # -----------------------------
       - name: Upload plan
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
-          path: tfplan
+          path: ${{ env.TF_DIR }}/tfplan
 
-      # -----------------------------
-      # Apply Terraform (only on main)
-      # -----------------------------
-      - name: Terraform Apply
+      - name: Terraform Apply (only on main)
         if: github.ref == 'refs/heads/main'
+        working-directory: ${{ env.TF_DIR }}
         run: terraform apply -auto-approve tfplan
