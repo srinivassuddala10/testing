@@ -1,63 +1,81 @@
-name: Terraform Deploy
+name: Terraform AWS Infrastructure Deploy
 
 on:
   push:
     branches:
       - main
+      - feature/**
   pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
   terraform:
-    name: Terraform Apply
+    name: Deploy AWS Infrastructure
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: infra  # path to your Terraform files
+    env:
+      AWS_REGION: us-east-1
 
     steps:
-      # 1️⃣ Checkout code
-      - name: Checkout repository
+      # -----------------------------
+      # Checkout Repository
+      # -----------------------------
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Terraform
-      - name: Set up Terraform
+      # -----------------------------
+      # Setup Terraform
+      # -----------------------------
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.5
+          terraform_version: 1.7.5
 
-      # 3️⃣ Configure AWS Credentials
+      # -----------------------------
+      # Configure AWS Credentials
+      # -----------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      # 4️⃣ Initialize Terraform
-      - name: Initialize Terraform
+      # -----------------------------
+      # Initialize Terraform
+      # -----------------------------
+      - name: Terraform Init
         run: terraform init
 
-      # 5️⃣ Validate Terraform configuration
-      - name: Validate Terraform
+      # -----------------------------
+      # Validate Terraform Configuration
+      # -----------------------------
+      - name: Terraform Validate
         run: terraform validate
 
-      # 6️⃣ Terraform Plan
+      # -----------------------------
+      # Terraform Plan
+      # -----------------------------
       - name: Terraform Plan
+        id: plan
         run: terraform plan -out=tfplan
 
-      # 7️⃣ Terraform Apply
+      # -----------------------------
+      # Upload Plan as Artifact (optional)
+      # -----------------------------
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: tfplan
+
+      # -----------------------------
+      # Apply Terraform (only on main)
+      # -----------------------------
       - name: Terraform Apply
-        id: apply
-        run: |
-          set -o pipefail
-          terraform apply -auto-approve tfplan 2>&1 | tee terraform.log
-          # Check for common AWS errors
-          if grep -q "VpcLimitExceeded" terraform.log; then
-            echo "❌ VPC limit exceeded. Please delete unused VPCs or increase limit."
-            exit 1
-          fi
-          if grep -q "BucketAlreadyExists" terraform.log; then
-            echo "❌ S3 bucket already exists. Choose a unique bucket name."
-            exit 1
-          fi
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan
