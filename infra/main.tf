@@ -1,13 +1,11 @@
 # ---------------------------
 # VPC
 # ---------------------------
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
-
-  tags = {
-    Name = "main-vpc"
-  }
+data "aws_vpc" "existing" {
+  default = true
 }
+
+# Then use data.aws_vpc.existing.id for subnets/security groups
 
 # ---------------------------
 # Subnet
@@ -141,12 +139,13 @@ resource "aws_instance" "web" {
 # S3 Bucket for Frontend
 # ---------------------------
 resource "aws_s3_bucket" "frontend_bucket" {
-  bucket = "my-frontend-bucket-unique-name-123456" # must be globally unique
-
-  tags = {
-    Name = "frontend-bucket"
-  }
+  bucket = "my-frontend-bucket-${random_id.bucket_id.hex}"  # unique suffix
 }
+
+resource "random_id" "bucket_id" {
+  byte_length = 4
+}
+
 
 # ---------------------------
 # DB Subnet Group
